@@ -79,6 +79,11 @@ promise = $.getJSON "/conf.json"
 promise.done (data) ->
     window.taigaConfig = _.assign({}, window.taigaConfig, data)
 
+    base = document.querySelector('base')
+
+    if base && window.taigaConfig.baseHref
+        base.setAttribute("href", window.taigaConfig.baseHref)
+
 promise.fail () ->
     console.error "Your conf.json file is not a valid json file, please review it."
 
@@ -87,11 +92,13 @@ promise.always ->
         window.emojis = emojis
     if window.taigaConfig.contribPlugins.length > 0
         loadPlugins(window.taigaConfig.contribPlugins).then () ->
-            ljs.load "/#{window._version}/js/app.js", ->
+            ljs.load("/#{window._version}/js/elements.js")
+                .load "/#{window._version}/js/app.js", ->
+                    emojisPromise.then ->
+                        angular.bootstrap(document, ['taiga'])
+    else
+        ljs.load("/#{window._version}/js/elements.js")
+            .load "/#{window._version}/js/app.js", ->
                 emojisPromise.then ->
                     angular.bootstrap(document, ['taiga'])
-    else
-        ljs.load "/#{window._version}/js/app.js", ->
-            emojisPromise.then ->
-                angular.bootstrap(document, ['taiga'])
 
