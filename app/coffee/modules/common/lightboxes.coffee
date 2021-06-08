@@ -433,6 +433,39 @@ module.directive("tgLightboxLeaveProjectWarning", ["lightboxService", LightboxLe
 
 
 #############################################################################
+## Move Userstory to new Project Directive
+#############################################################################
+
+MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService) ->
+    link = ($scope, $el, attrs) ->
+        $scope.$on "usform:move", (ctx, projectId, checkboxes) ->
+            $scope.moveData = {
+                sourceProjectId: projectId
+                checkboxes: checkboxes
+            }
+
+            console.log("moving from projectId: " + projectId + "; " + checkboxes.length + " checkboxes")
+
+            # TODO: implement checks and movement...
+
+            for cb in checkboxes
+                console.log("move user story with ref id " + cb.id.substring(9) + ": " + $(cb).is(":checked")) # strip us-check-
+
+            lightboxService.open($el)
+
+    return {
+        link: link
+    }
+
+module.directive("tgLbMoveUserstoryToProject", [
+    "$tgRepo",
+    "$tgResources",
+    "$rootScope",
+    "lightboxService",
+    MoveUserstoryToProjectDirective
+])
+
+#############################################################################
 ## Set Due Date Lightbox Directive
 #############################################################################
 

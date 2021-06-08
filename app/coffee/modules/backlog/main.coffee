@@ -606,6 +606,10 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
             when "bulk" then @rootscope.$broadcast("usform:bulk", @scope.projectId,
                                                    @scope.project.default_us_status)
 
+    moveUsToProject: (type) ->
+        switch type
+            when "backlog" then @rootscope.$broadcast("usform:move", @scope.projectId, angular.element('.backlog-manager').find("input[type='checkbox']"))
+
     addNewSprint: () ->
         @rootscope.$broadcast("sprintform:create", @scope.projectId)
 
