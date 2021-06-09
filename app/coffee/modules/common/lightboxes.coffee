@@ -436,32 +436,117 @@ module.directive("tgLightboxLeaveProjectWarning", ["lightboxService", LightboxLe
 ## Move Userstory to new Project Directive
 #############################################################################
 
-MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService) ->
+MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService, $tgCurrentUserService, $confirm, $translate) ->
     link = ($scope, $el, attrs) ->
+        form = null
+
+        $scope.valid = false
+        $scope.statusText = ""
+        $scope.descriptionText = ""
+        $scope.projects = null
+        $scope.selectedProject = $scope.project.id
+
+        loadProjects = ->
+            if $scope.projects == null
+                $scope.projects = $tgCurrentUserService.projects.get("unblocked")
+
+        getProject = (projectId) ->
+            #for project in $scope.projects.toJS()
+            #    if project.id == projectId
+            #        return project
+
+            return $rs.projects.get(projectId).then (project) =>
+                return project
+
+        getUserStoryAttributes = (projectId) ->
+            return $rs.customAttributes["userstory"].list(projectId).then (customAttributes) =>
+                return customAttributes
+
         $scope.$on "usform:move", (ctx, projectId, checkboxes) ->
+            form.reset() if form
+
+            selectedUserstories = []
+            for cb in checkboxes
+                if $(cb).is(":checked")
+                    selectedUserstories.push(cb.id.substring(9)) # strip us-check- 
+
+            if selectedUserstories.length == 0
+                text = $translate.instant("LIGHTBOX.NO_USERSTORIES_SELECTED")
+                $confirm.notify("error", text)
+                return
+
+            loadProjects()
+            console.log($scope.projects)
+
             $scope.moveData = {
-                sourceProjectId: projectId
-                checkboxes: checkboxes
+                userstories: selectedUserstories
             }
 
-            console.log("moving from projectId: " + projectId + "; " + checkboxes.length + " checkboxes")
+            console.log("moving from projectId: " + projectId + "; " + selectedUserstories.length + " userstories")
 
-            # TODO: implement checks and movement...
-
-            for cb in checkboxes
-                console.log("move user story with ref id " + cb.id.substring(9) + ": " + $(cb).is(":checked")) # strip us-check-
+            $scope.descriptionText = "Selected " + selectedUserstories.length + " userstories."
 
             lightboxService.open($el)
 
-    return {
-        link: link
-    }
+        $scope.selectProject = (selectedProjectId) ->
+            $scope.statusText = "Status: Validating target project " + selectedProjectId + "..."
+            console.log("Checking target project " + selectedProjectId)
+
+            # validate user story attributes
+            Promise.all([getUserStoryAttributes(selectedProjectId), getUserStoryAttributes($scope.project.id), getProject(selectedProjectId)]).then (attrs) =>
+                targetProject = attrs[2]
+                sourceProject = $scope.project
+                console.log(targetProject)
+                console.log(sourceProject)
+                if attrs[0].length != attrs[1].length  # todo: more sophisticated check needed...
+                    $scope.statusText += "\n[WARN]\tCustom Attributes can not be mapped and will be skipped!"
+                else
+                    $scope.statusText += "\n[ OK ]\tCustom Attributes can be mapped."
+
+                # validate user story status
+                if targetProject.us_statuses.length != sourceProject.us_statuses.length  # todo: more sophisticated check needed...
+                    $scope.statusText += "\n[WARN]\tUserstory status can not be mapped and will be skipped!"
+                else
+                    $scope.statusText += "\n[ OK ]\tUserstory status can be mapped."
+
+                # validate project members
+                if targetProject.members.length != sourceProject.members.length  # todo: more sophisticated check needed...
+                    $scope.statusText += "\n[WARN]\tProject members can not be mapped and will be skipped!"
+                else
+                    $scope.statusText += "\n[ OK ]\tProject members can be mapped."
+                
+                $scope.$apply()  # ensure changes are detected by angular
+
+
+
+        move = debounce 2000, (event) =>
+            event.preventDefault()
+            # TODO: implement
+
+        copy = debounce 2000, (event) =>
+            event.preventDefault()
+            # TODO: implement
+
+        moveButton = $el.find(".js-us-move-button")
+        copyButton = $el.find(".js-us-copy-button")
+
+        $el.on "submit", "form", move
+
+        $el.on "click", ".js-us-copy-button", copy
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {link: link}
 
 module.directive("tgLbMoveUserstoryToProject", [
     "$tgRepo",
     "$tgResources",
     "$rootScope",
     "lightboxService",
+    "tgCurrentUserService",
+    "$tgConfirm",
+    "$translate",
     MoveUserstoryToProjectDirective
 ])
 
