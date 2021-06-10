@@ -458,12 +458,21 @@ MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService, $tgC
             return $rs.projects.get(projectId).then (project) =>
                 return project
 
+        getUserstory = (projectId, userstoryRef) ->
+            return $rs.userstories.getByRef(projectId, userstoryRef).then (us) =>
+                return us
+
         getUserStoryAttributes = (projectId) ->
             return $rs.customAttributes["userstory"].list(projectId).then (customAttributes) =>
                 return customAttributes
 
         $scope.$on "usform:move", (ctx, projectId, checkboxes) ->
             form.reset() if form
+            $scope.valid = false
+            $scope.statusText = ""
+            $scope.descriptionText = ""
+            $scope.projects = null
+            $scope.selectedProject = $scope.project.id
 
             selectedUserstories = []
             for cb in checkboxes
@@ -493,39 +502,93 @@ MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService, $tgC
             console.log("Checking target project " + selectedProjectId)
 
             # validate user story attributes
-            Promise.all([getUserStoryAttributes(selectedProjectId), getUserStoryAttributes($scope.project.id), getProject(selectedProjectId)]).then (attrs) =>
+            Promise.all([getUserStoryAttributes(selectedProjectId), getUserStoryAttributes($scope.project.id), getProject(selectedProjectId), getProject($scope.project.id)]).then (attrs) =>
                 targetProject = attrs[2]
-                sourceProject = $scope.project
+                sourceProject = attrs[3]
                 console.log(targetProject)
                 console.log(sourceProject)
+                fatalErrors = false
+
                 if attrs[0].length != attrs[1].length  # todo: more sophisticated check needed...
                     $scope.statusText += "\n[WARN]\tCustom Attributes can not be mapped and will be skipped!"
                 else
-                    $scope.statusText += "\n[ OK ]\tCustom Attributes can be mapped."
+                    $scope.statusText += "\n[ OK ]\tCustom Attributes can be mapped, but they will be ignored."
 
                 # validate user story status
-                if targetProject.us_statuses.length != sourceProject.us_statuses.length  # todo: more sophisticated check needed...
-                    $scope.statusText += "\n[WARN]\tUserstory status can not be mapped and will be skipped!"
-                else
+                mappable = true
+                for sourceStatus in sourceProject.us_statuses
+                    match = false
+                    for targetStatus in targetProject.us_statuses
+                        if targetStatus.name == sourceStatus.name
+                            match = true
+                            break
+                    if !match
+                        $scope.statusText += "\n\t - Userstory status " + sourceStatus.name + " (" + sourceStatus.is_closed + ") missing in target project..."
+                        mappable = false
+                
+                if mappable
                     $scope.statusText += "\n[ OK ]\tUserstory status can be mapped."
+                else
+                    $scope.statusText += "\n[WARN]\tUserstory status can not be mapped and will be reset!"
 
                 # validate project members
-                if targetProject.members.length != sourceProject.members.length  # todo: more sophisticated check needed...
-                    $scope.statusText += "\n[WARN]\tProject members can not be mapped and will be skipped!"
-                else
-                    $scope.statusText += "\n[ OK ]\tProject members can be mapped."
+                mappable = true
+                for sourceMember in sourceProject.members
+                    match = false
+                    for targetMember in targetProject.members
+                        if targetMember.id == sourceMember.id
+                            match = true
+                            break
+                    if !match
+                        $scope.statusText += "\n\t - Project member " + sourceMember.username + " (" + sourceMember.id + ") missing in target project..."
+                        mappable = false
                 
-                $scope.$apply()  # ensure changes are detected by angular
+                if mappable
+                    $scope.statusText += "\n[ OK ]\tProject members can be mapped."
+                else
+                    $scope.statusText += "\n[WARN]\tProject members missing and will be skipped!"
 
+                if !fatalErrors
+                    $scope.valid = true
+
+                $scope.$apply()  # ensure changes are detected by angular
 
 
         move = debounce 2000, (event) =>
             event.preventDefault()
+            console.log("moving...")
+
             # TODO: implement
 
         copy = debounce 2000, (event) =>
             event.preventDefault()
-            # TODO: implement
+            console.log("copying " + $scope.moveData.userstories.length + " userstories from project " + $scope.project.id + " to project " + $scope.selectedProject)
+
+            for userstoryRef in $scope.moveData.userstories
+                getUserstory($scope.project.id, userstoryRef).then (userstory) =>
+                    console.log("copying us " + userstory.id + " from project " + $scope.project.id + " to project " + $scope.selectedProject)
+                    newUserstory = {
+                        project: $scope.selectedProject
+                        subject: userstory.subject
+                        description: userstory.description
+                        tags: []
+                        points : {}
+                        swimlane: null
+                        status: if data.statusId then data.statusId else data.project.default_us_status
+                        is_archived: false
+                    }
+                    #promise = $repo.create("userstories", $scope.obj)
+                    #promise.then (result) ->
+                    #    result =  _.map(result.data, (x) => $model.make_model('userstory', x))
+                    #    $rootscope.$broadcast("usform:bulk:success", result)
+                    #    lightboxService.close($el)
+
+                    #promise.then null, (response) ->
+                    #    if response.data.status
+                    #        text = $translate.instant("LIGHTBOX.CREATE_EDIT.ERROR_STATUS")
+                    #        $confirm.notify("error", text)
+                    #    if response._error_message
+                    #        $confirm.notify("error", response._error_message)
 
         moveButton = $el.find(".js-us-move-button")
         copyButton = $el.find(".js-us-copy-button")
