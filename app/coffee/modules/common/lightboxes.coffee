@@ -433,6 +433,187 @@ module.directive("tgLightboxLeaveProjectWarning", ["lightboxService", LightboxLe
 
 
 #############################################################################
+## Move Userstory to new Project Directive
+#############################################################################
+
+MoveUserstoryToProjectDirective = ($repo, $rs, $rootscope, lightboxService, $tgCurrentUserService, $confirm, $translate) ->
+    link = ($scope, $el, attrs) ->
+        form = null
+
+        $scope.valid = false
+        $scope.statusText = ""
+        $scope.descriptionText = ""
+        $scope.projects = null
+        $scope.selectedProject = $scope.project.id
+
+        loadProjects = ->
+            if $scope.projects == null
+                $scope.projects = $tgCurrentUserService.projects.get("unblocked")
+
+        getProject = (projectId) ->
+            #for project in $scope.projects.toJS()
+            #    if project.id == projectId
+            #        return project
+
+            return $rs.projects.get(projectId).then (project) =>
+                return project
+
+        getUserstory = (projectId, userstoryRef) ->
+            return $rs.userstories.getByRef(projectId, userstoryRef).then (us) =>
+                return us
+
+        getUserStoryAttributes = (projectId) ->
+            return $rs.customAttributes["userstory"].list(projectId).then (customAttributes) =>
+                return customAttributes
+
+        $scope.$on "usform:move", (ctx, projectId, checkboxes) ->
+            form.reset() if form
+            $scope.valid = false
+            $scope.statusText = ""
+            $scope.descriptionText = ""
+            $scope.projects = null
+            $scope.selectedProject = $scope.project.id
+
+            selectedUserstories = []
+            for cb in checkboxes
+                if $(cb).is(":checked")
+                    selectedUserstories.push(cb.id.substring(9)) # strip us-check- 
+
+            if selectedUserstories.length == 0
+                text = $translate.instant("LIGHTBOX.NO_USERSTORIES_SELECTED")
+                $confirm.notify("error", text)
+                return
+
+            loadProjects()
+            console.log($scope.projects)
+
+            $scope.moveData = {
+                userstories: selectedUserstories
+            }
+
+            console.log("moving from projectId: " + projectId + "; " + selectedUserstories.length + " userstories")
+
+            $scope.descriptionText = "Selected " + selectedUserstories.length + " userstories."
+
+            lightboxService.open($el)
+
+        $scope.selectProject = (selectedProjectId) ->
+            $scope.statusText = "Status: Validating target project " + selectedProjectId + "..."
+            console.log("Checking target project " + selectedProjectId)
+
+            # validate user story attributes
+            Promise.all([getUserStoryAttributes(selectedProjectId), getUserStoryAttributes($scope.project.id), getProject(selectedProjectId), getProject($scope.project.id)]).then (attrs) =>
+                targetProject = attrs[2]
+                sourceProject = attrs[3]
+                console.log(targetProject)
+                console.log(sourceProject)
+                fatalErrors = false
+
+                if attrs[0].length != attrs[1].length  # todo: more sophisticated check needed...
+                    $scope.statusText += "\n[WARN]\tCustom Attributes can not be mapped and will be skipped!"
+                else
+                    $scope.statusText += "\n[ OK ]\tCustom Attributes can be mapped, but they will be ignored."
+
+                # validate user story status
+                mappable = true
+                for sourceStatus in sourceProject.us_statuses
+                    match = false
+                    for targetStatus in targetProject.us_statuses
+                        if targetStatus.name == sourceStatus.name
+                            match = true
+                            break
+                    if !match
+                        $scope.statusText += "\n\t - Userstory status " + sourceStatus.name + " (" + sourceStatus.is_closed + ") missing in target project..."
+                        mappable = false
+                
+                if mappable
+                    $scope.statusText += "\n[ OK ]\tUserstory status can be mapped."
+                else
+                    $scope.statusText += "\n[WARN]\tUserstory status can not be mapped and will be reset!"
+
+                # validate project members
+                mappable = true
+                for sourceMember in sourceProject.members
+                    match = false
+                    for targetMember in targetProject.members
+                        if targetMember.id == sourceMember.id
+                            match = true
+                            break
+                    if !match
+                        $scope.statusText += "\n\t - Project member " + sourceMember.username + " (" + sourceMember.id + ") missing in target project..."
+                        mappable = false
+                
+                if mappable
+                    $scope.statusText += "\n[ OK ]\tProject members can be mapped."
+                else
+                    $scope.statusText += "\n[WARN]\tProject members missing and will be skipped!"
+
+                if !fatalErrors
+                    $scope.valid = true
+
+                $scope.$apply()  # ensure changes are detected by angular
+
+
+        move = debounce 2000, (event) =>
+            event.preventDefault()
+            console.log("moving...")
+
+            # TODO: implement
+
+        copy = debounce 2000, (event) =>
+            event.preventDefault()
+            console.log("copying " + $scope.moveData.userstories.length + " userstories from project " + $scope.project.id + " to project " + $scope.selectedProject)
+
+            for userstoryRef in $scope.moveData.userstories
+                getUserstory($scope.project.id, userstoryRef).then (userstory) =>
+                    console.log("copying us " + userstory.id + " from project " + $scope.project.id + " to project " + $scope.selectedProject)
+                    newUserstory = {
+                        project: $scope.selectedProject
+                        subject: userstory.subject
+                        description: userstory.description
+                        tags: []
+                        points : {}
+                        swimlane: null
+                        status: if data.statusId then data.statusId else data.project.default_us_status
+                        is_archived: false
+                    }
+                    #promise = $repo.create("userstories", $scope.obj)
+                    #promise.then (result) ->
+                    #    result =  _.map(result.data, (x) => $model.make_model('userstory', x))
+                    #    $rootscope.$broadcast("usform:bulk:success", result)
+                    #    lightboxService.close($el)
+
+                    #promise.then null, (response) ->
+                    #    if response.data.status
+                    #        text = $translate.instant("LIGHTBOX.CREATE_EDIT.ERROR_STATUS")
+                    #        $confirm.notify("error", text)
+                    #    if response._error_message
+                    #        $confirm.notify("error", response._error_message)
+
+        moveButton = $el.find(".js-us-move-button")
+        copyButton = $el.find(".js-us-copy-button")
+
+        $el.on "submit", "form", move
+
+        $el.on "click", ".js-us-copy-button", copy
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {link: link}
+
+module.directive("tgLbMoveUserstoryToProject", [
+    "$tgRepo",
+    "$tgResources",
+    "$rootScope",
+    "lightboxService",
+    "tgCurrentUserService",
+    "$tgConfirm",
+    "$translate",
+    MoveUserstoryToProjectDirective
+])
+
+#############################################################################
 ## Set Due Date Lightbox Directive
 #############################################################################
 

@@ -21,3 +21,12 @@ div.new-us
         aria-label="{{'US.ADD_BULK' | translate}}"
     )
         tg-svg(svg-icon="icon-bulk")
+    
+    button.btn-icon(
+        variant="secondary"
+        ng-if="userstories !== undefined && userstories.length"
+        ng-click="ctrl.moveUsToProject('backlog')",
+        tg-check-permission="modify_us"
+        aria-label="{{'US.MOVE_PROJECT' | translate}}"
+    )
+        tg-svg(svg-icon="icon-move")
